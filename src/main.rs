@@ -3,6 +3,9 @@ use std::net::TcpStream;
 use std::sync::mpsc;
 use std::thread;
 
+mod commands;
+use commands::{handle_input, CommandAction};
+
 fn main() -> io::Result<()> {
     let stream = TcpStream::connect("127.0.0.1:6667")?;
     println!("Connected to IRC server!");
@@ -27,9 +30,9 @@ fn main() -> io::Result<()> {
     });
 
     // Queue registration commands before starting normal input
-    tx.send("NICK rustclient".to_string())
+    tx.send("NICK jigpig".to_string())
         .map_err(|_| io::Error::other("Writer stopped"))?;
-    tx.send("USER rustclent 0 * :Rust IRC Client".to_string())
+    tx.send("USER jigpig 0 * :Rust IRC Client".to_string())
         .map_err(|_| io::Error::other("Writer stopped"))?;
 
     // Give reader it's own sender
@@ -74,18 +77,40 @@ fn main() -> io::Result<()> {
     // Thread 3: Input
     let input_handle = thread::spawn(move || -> io::Result<()> {
         let stdin = io::stdin();
+        let mut current_channel: Option<String> = None;
 
         for line in stdin.lock().lines() {
             let line = line?;
 
-            if line.eq_ignore_ascii_case("/quit") {
-                tx.send("QUIT :Goodbye".to_string())
-                    .map_err(|_| io::Error::other("Writer stopped"))?;
-                break;
-            }
+            match handle_input(&line, current_channel.as_deref()) {
+                Ok(CommandAction::SendIrc(message)) => {
+                    tx.send(message)
+                        .map_err(|_| io::Error::other("Writer stopped"))?;
+                }
 
-            tx.send(line)
-                .map_err(|_| io::Error::other("Writer stopped"))?;
+                Ok(CommandAction::Join(channel)) => {
+                    tx.send(format!("JOIN {channel}"))
+                        .map_err(|_| io::Error::other("Writer stopped"))?;
+
+                    current_channel = Some(channel);
+                }
+
+                Ok(CommandAction::Local(message)) => {
+                    if !message.is_empty() {
+                        println!("{message}");
+                    }
+                }
+
+                Ok(CommandAction::Quit) => {
+                    tx.send("QUIT: Leaving IRC".to_string())
+                        .map_err(|_| io::Error::other("Writer stopped"))?;
+                    break;
+                }
+
+                Err(error) => {
+                    println!("Error: {error}");
+                }
+            }
         }
 
         Ok(())
