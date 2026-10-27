@@ -1,9 +1,0 @@
-/home/lain/Development/projects/rust-irc-client/.devenv/bootstrap/bootstrapLib.nix
-/home/lain/Development/projects/rust-irc-client/.devenv/bootstrap/default.nix
-/home/lain/Development/projects/rust-irc-client/.devenv/bootstrap/resolve-lock.nix
-/home/lain/Development/projects/rust-irc-client/devenv.local.nix
-/home/lain/Development/projects/rust-irc-client/devenv.lock
-/home/lain/Development/projects/rust-irc-client/devenv.nix
-/home/lain/Development/projects/rust-irc-client/devenv.yaml
-/home/lain/.config/nixpkgs/overlays
-/home/lain/.config/nixpkgs/overlays.nix
