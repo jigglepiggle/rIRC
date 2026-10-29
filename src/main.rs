@@ -4,12 +4,15 @@ use std::sync::mpsc;
 use std::thread;
 
 mod commands;
-use commands::{handle_input, CommandAction};
+use commands::{CommandAction, handle_input};
+
+mod messages;
+use messages::{Event, classify, parse_line};
 
 fn main() -> io::Result<()> {
     let stream = TcpStream::connect("127.0.0.1:6667")?;
     println!("Connected to IRC server!");
-    
+
     // Create queue for outgoing IRC commands
     let (tx, rx) = mpsc::channel::<String>();
 
@@ -51,7 +54,31 @@ fn main() -> io::Result<()> {
                 break;
             }
 
-            print!("{line}");
+            // messages.rs
+            match parse_line(&line).map(classify) {
+                Some(Event::ServerReply { code, params }) => println!("reply {code}: {params:?}"),
+
+                Some(Event::ChatMessage {
+                    sender,
+                    target,
+                    text,
+                }) => println!("{target} <{sender}> {text}"),
+
+                Some(Event::Quit { nickname, reason }) => {
+                    println!("user <{nickname}> quit: {reason}")
+                }
+
+                Some(Event::Join { nickname, channel }) => {
+                    println!("user <{nickname}> has joined channel {channel}")
+                }
+
+                Some(Event::ServerError(message)) => eprintln!("ERROR: {message}"),
+
+                Some(_) => {}
+                None => println!("not IRC: {line}"),
+            }
+
+            //print!("{line}");
             io::stdout().flush()?;
 
             // Reply to server keepalive messages
@@ -64,11 +91,11 @@ fn main() -> io::Result<()> {
             }
 
             // Auto join test channel
-            if line.contains(" 001 ") {
-                reader_tx
-                    .send("JOIN #test".to_string())
-                    .map_err(|_| io::Error::other("Writer stopped"))?;
-            }
+            //if line.contains(" 001 ") {
+            //    reader_tx
+            //        .send("JOIN #test".to_string())
+            //        .map_err(|_| io::Error::other("Writer stopped"))?;
+            //}
         }
 
         Ok(())
@@ -102,7 +129,7 @@ fn main() -> io::Result<()> {
                 }
 
                 Ok(CommandAction::Quit) => {
-                    tx.send("QUIT: Leaving IRC".to_string())
+                    tx.send("QUIT :Leaving IRC".to_string())
                         .map_err(|_| io::Error::other("Writer stopped"))?;
                     break;
                 }
