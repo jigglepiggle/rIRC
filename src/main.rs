@@ -1,4 +1,4 @@
-use std::io::{self, BufRead, BufReader, Write};
+use std::io::{self, BufRead};
 use std::net::TcpStream;
 use std::sync::mpsc;
 use std::thread;
@@ -7,7 +7,8 @@ mod commands;
 use commands::{CommandAction, handle_input};
 
 mod messages;
-use messages::{Event, classify, parse_line};
+mod reader;
+mod writer;
 
 fn main() -> io::Result<()> {
     let stream = TcpStream::connect("127.0.0.1:6667")?;
@@ -16,21 +17,11 @@ fn main() -> io::Result<()> {
     // Create queue for outgoing IRC commands
     let (tx, rx) = mpsc::channel::<String>();
 
-    // Clone TCP connection for independent rw
+    // Clone stream for reader tx/rx
     let reader_stream = stream.try_clone()?;
 
     // Thread 1: Writer
-    let writer_handle = thread::spawn(move || -> io::Result<()> {
-        let mut writer = stream;
-
-        for message in rx {
-            let wire_message = format!("{message}\r\n");
-            writer.write_all(wire_message.as_bytes())?;
-            writer.flush()?;
-        }
-
-        Ok(())
-    });
+    let writer_handle = thread::spawn(move || writer::run(stream, rx));
 
     // Queue registration commands before starting normal input
     tx.send("NICK jigpig".to_string())
@@ -38,72 +29,11 @@ fn main() -> io::Result<()> {
     tx.send("USER jigpig 0 * :Rust IRC Client".to_string())
         .map_err(|_| io::Error::other("Writer stopped"))?;
 
-    // Give reader it's own sender
+    // Give reader it's own sender / reader
     let reader_tx = tx.clone();
 
     // Thread 2: Reader
-    let reader_handle = thread::spawn(move || -> io::Result<()> {
-        let mut reader = BufReader::new(reader_stream);
-        let mut line = String::new();
-
-        loop {
-            line.clear();
-
-            if reader.read_line(&mut line)? == 0 {
-                println!("Server disconnected.");
-                break;
-            }
-
-            // messages.rs
-            match parse_line(&line).map(classify) {
-                Some(Event::ServerReply { code, params }) => println!("reply {code}: {params:?}"),
-
-                Some(Event::ChatMessage {
-                    sender,
-                    target,
-                    text,
-                }) => println!("{target} <{sender}> {text}"),
-
-                Some(Event::Quit { nickname, reason }) => {
-                    println!("user <{nickname}> quit: {reason}")
-                }
-
-                Some(Event::Join { nickname, channel }) => {
-                    println!("user <{nickname}> has joined channel {channel}")
-                }
-
-                Some(Event::Notice { target, text }) => {
-                    println!("{target} NOTICE: {text}")
-                }
-
-                Some(Event::ServerError(message)) => eprintln!("ERROR: {message}"),
-
-                Some(_) => {}
-                None => println!("not IRC: {line}"),
-            }
-
-            //print!("{line}");
-            io::stdout().flush()?;
-
-            // Reply to server keepalive messages
-            if let Some(payload) = line.strip_prefix("PING ") {
-                let payload = payload.trim_end_matches(&['\r', '\n'][..]);
-
-                reader_tx
-                    .send(format!("PONG {payload}"))
-                    .map_err(|_| io::Error::other("Writer stopped"))?;
-            }
-
-            // Auto join test channel
-            //if line.contains(" 001 ") {
-            //    reader_tx
-            //        .send("JOIN #test".to_string())
-            //        .map_err(|_| io::Error::other("Writer stopped"))?;
-            //}
-        }
-
-        Ok(())
-    });
+    let reader_handle = thread::spawn(move || reader::run(reader_stream, reader_tx));
 
     // Thread 3: Input
     let input_handle = thread::spawn(move || -> io::Result<()> {
