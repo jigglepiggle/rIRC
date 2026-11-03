@@ -81,13 +81,21 @@ pub fn handle_input(input: &str, current_channel: Option<&str>) -> Result<Comman
             Ok(CommandAction::Quit)
         }
 
+        "raw" => {
+            if args.is_empty() {
+                return Err("Usage: /raw irc_command".to_string());
+            }
+
+            Ok(CommandAction::SendIrc(format!("{args}")))
+        }
+
         "help" => {
             if !args.is_empty() {
                 return Err("Usage: /help".to_string());
             }
 
             Ok(CommandAction::Local(
-                "Commands: /join, /msg, /nick, /quit, /help".to_string(),
+                "Commands: /join, /msg, /notice, /nick, /quit, /raw, /help".to_string(),
             ))
         }
 

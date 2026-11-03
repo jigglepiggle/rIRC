@@ -51,7 +51,7 @@ fn render_nicks(frame: &mut Frame, area: Rect) {
     );
 
     // Find a way to list all nicks in a channel and list them here
-    // IRC Command: USERS
+    // IRC Command: NAMES, WHOIS, WHO
 
     frame.render_widget(widget, area);
 }
