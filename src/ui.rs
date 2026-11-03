@@ -8,7 +8,7 @@ use ratatui::{
 
 use crate::app::App;
 
-pub fn render(frame: &mut Frame, app: &App) {
+pub fn render(frame: &mut Frame, app: &mut App) {
     // Split screen horizontally into 3 panels
     let horizontal = Layout::default()
         .direction(Direction::Horizontal)
@@ -37,7 +37,7 @@ fn render_channels(frame: &mut Frame, area: Rect) {
     );
 
     // Find a way to scan for channels and list them here
-    // Irc Command: LIST
+    // IRC Command: LIST
 
     frame.render_widget(widget, area);
 }
@@ -51,12 +51,12 @@ fn render_nicks(frame: &mut Frame, area: Rect) {
     );
 
     // Find a way to list all nicks in a channel and list them here
-    // Irc Command: USERS
+    // IRC Command: USERS
 
     frame.render_widget(widget, area);
 }
 
-fn render_chat(frame: &mut Frame, area: Rect, app: &App) {
+fn render_chat(frame: &mut Frame, area: Rect, app: &mut App) {
     // Split vertically into output & input
     let vertical = Layout::default()
         .direction(Direction::Vertical)
@@ -67,18 +67,39 @@ fn render_chat(frame: &mut Frame, area: Rect, app: &App) {
     render_input(frame, vertical[1], app);
 }
 
-fn render_output(frame: &mut Frame, area: Rect, app: &App) {
+fn render_output(frame: &mut Frame, area: Rect, app: &mut App) {
     let output = app.output().join("\n");
 
-    let widget = Paragraph::new(Text::raw(output))
+    let widget = Paragraph::new(Text::raw(output.clone()))
         .block(
             Block::default()
                 .title(" Chat ")
                 .borders(Borders::ALL)
                 .border_style(Style::default().fg(Color::Blue)),
         )
-        .wrap(Wrap { trim: false })
-        .scroll((app.scroll, 0));
+        .wrap(Wrap { trim: false });
+
+    // Calculate rendered line count, including approximate wrapping.
+    let available_width = area.width.saturating_sub(2).max(1) as usize;
+
+    let content_height: usize = output
+        .lines()
+        .map(|line| {
+            let length = line.chars().count();
+            length.max(1).div_ceil(available_width)
+        })
+        .sum();
+
+    let visible_height = area.height.saturating_sub(2) as usize;
+
+    // Only scroll to the bottom when content overflows.
+    if app.auto_scroll {
+        app.scroll = content_height
+            .saturating_sub(visible_height)
+            .min(u16::MAX as usize) as u16;
+    }
+
+    let widget = widget.scroll((app.scroll, 0));
 
     frame.render_widget(widget, area);
 }

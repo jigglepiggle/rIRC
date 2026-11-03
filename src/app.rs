@@ -19,7 +19,7 @@ pub struct App {
     current_channel: Option<String>,
 
     pub scroll: u16,
-    auto_scroll: bool,
+    pub auto_scroll: bool,
 }
 
 impl App {
