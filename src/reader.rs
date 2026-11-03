@@ -1,4 +1,4 @@
-use std::io::{self, BufRead, BufReader, Write};
+use std::io::{self, BufRead, BufReader};
 use std::net::TcpStream;
 use std::sync::mpsc::Sender;
 
@@ -52,9 +52,6 @@ pub fn run(stream: TcpStream, writer_tx: Sender<String>, ui_tx: Sender<String>) 
 
             None => {}
         }
-
-        //print!("{line}");
-        io::stdout().flush()?;
 
         // Reply to server keepalive messages
         if let Some(payload) = line.strip_prefix("PING ") {

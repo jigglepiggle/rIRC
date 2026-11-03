@@ -46,7 +46,7 @@ impl App {
             terminal.draw(|frame| ui::render(frame, self))?;
 
             // Poll keyboard without blocking IRC message reception.
-            if event::poll(Duration::from_millis(50))? {
+            if event::poll(Duration::from_millis(10))? {
                 self.handle_event(event::read()?)?;
             }
         }

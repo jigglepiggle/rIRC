@@ -70,15 +70,6 @@ fn render_chat(frame: &mut Frame, area: Rect, app: &mut App) {
 fn render_output(frame: &mut Frame, area: Rect, app: &mut App) {
     let output = app.output().join("\n");
 
-    let widget = Paragraph::new(Text::raw(output.clone()))
-        .block(
-            Block::default()
-                .title(" Chat ")
-                .borders(Borders::ALL)
-                .border_style(Style::default().fg(Color::Blue)),
-        )
-        .wrap(Wrap { trim: false });
-
     // Calculate rendered line count, including approximate wrapping.
     let available_width = area.width.saturating_sub(2).max(1) as usize;
 
@@ -92,14 +83,21 @@ fn render_output(frame: &mut Frame, area: Rect, app: &mut App) {
 
     let visible_height = area.height.saturating_sub(2) as usize;
 
-    // Only scroll to the bottom when content overflows.
     if app.auto_scroll {
         app.scroll = content_height
             .saturating_sub(visible_height)
             .min(u16::MAX as usize) as u16;
     }
 
-    let widget = widget.scroll((app.scroll, 0));
+    let widget = Paragraph::new(Text::raw(output))
+        .block(
+            Block::default()
+                .title(" Chat ")
+                .borders(Borders::ALL)
+                .border_style(Style::default().fg(Color::Blue)),
+        )
+        .wrap(Wrap { trim: false })
+        .scroll((app.scroll, 0));
 
     frame.render_widget(widget, area);
 }
