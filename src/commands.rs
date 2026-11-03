@@ -45,7 +45,7 @@ pub fn handle_input(input: &str, current_channel: Option<&str>) -> Result<Comman
             }
 
             Ok(CommandAction::SendIrc(format!(
-                "PRIVMSG: {target} :{message}"
+                "PRIVMSG {target} :{message}"
             )))
         }
 
@@ -60,7 +60,9 @@ pub fn handle_input(input: &str, current_channel: Option<&str>) -> Result<Comman
                 return Err("Usage: /notice target message".to_string());
             }
 
-            Ok(CommandAction::SendIrc(format!("NOTICE {target} {message}")))
+            Ok(CommandAction::SendIrc(format!(
+                "NOTICE {target} :{message}"
+            )))
         }
 
         "nick" => {

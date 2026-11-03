@@ -1,92 +1,78 @@
-use std::io::{self, BufRead};
+use std::io;
 use std::net::TcpStream;
 use std::sync::mpsc;
 use std::thread;
 
 mod commands;
-use commands::{CommandAction, handle_input};
-
 mod messages;
 mod reader;
 mod writer;
 
+mod app;
+mod ui;
+
+use app::App;
+
 fn main() -> io::Result<()> {
+    // Connect to IRC server.
     let stream = TcpStream::connect("127.0.0.1:6667")?;
-    println!("Connected to IRC server!");
 
-    // Create queue for outgoing IRC commands
-    let (tx, rx) = mpsc::channel::<String>();
-
-    // Clone stream for reader tx/rx
+    let shutdown_stream = stream.try_clone()?;
     let reader_stream = stream.try_clone()?;
 
-    // Thread 1: Writer
+    // Outgoing IRC command channel.
+    let (tx, rx) = mpsc::channel::<String>();
+
+    // Incoming messages for the TUI.
+    let (ui_tx, ui_rx) = mpsc::channel::<String>();
+
+    // Start writer thread.
     let writer_handle = thread::spawn(move || writer::run(stream, rx));
 
-    // Queue registration commands before starting normal input
+    // Register with IRC server.
     tx.send("NICK jigpig".to_string())
         .map_err(|_| io::Error::other("Writer stopped"))?;
+
     tx.send("USER jigpig 0 * :Rust IRC Client".to_string())
         .map_err(|_| io::Error::other("Writer stopped"))?;
 
-    // Give reader it's own sender / reader
-    let reader_tx = tx.clone();
+    // Reader needs a sender for PONG responses.
+    let reader_writer_tx = tx.clone();
 
-    // Thread 2: Reader
-    let reader_handle = thread::spawn(move || reader::run(reader_stream, reader_tx));
+    // Start reader thread.
+    let reader_handle = thread::spawn(move || reader::run(reader_stream, reader_writer_tx, ui_tx));
 
-    // Thread 3: Input
-    let input_handle = thread::spawn(move || -> io::Result<()> {
-        let stdin = io::stdin();
-        let mut current_channel: Option<String> = None;
+    // Start TUI.
+    let mut terminal = ratatui::init();
 
-        for line in stdin.lock().lines() {
-            let line = line?;
+    let mut app = App::new(tx.clone());
 
-            match handle_input(&line, current_channel.as_deref()) {
-                Ok(CommandAction::SendIrc(message)) => {
-                    tx.send(message)
-                        .map_err(|_| io::Error::other("Writer stopped"))?;
-                }
+    let result = app.run(&mut terminal, ui_rx);
 
-                Ok(CommandAction::Join(channel)) => {
-                    tx.send(format!("JOIN {channel}"))
-                        .map_err(|_| io::Error::other("Writer stopped"))?;
+    // Restore terminal before shutting down networking.
+    ratatui::restore();
 
-                    current_channel = Some(channel);
-                }
+    // Unblock the reader without immediately closing the writer.
+    let _ = shutdown_stream.shutdown(std::net::Shutdown::Read);
 
-                Ok(CommandAction::Local(message)) => {
-                    if !message.is_empty() {
-                        println!("{message}");
-                    }
-                }
+    drop(app);
+    drop(tx);
 
-                Ok(CommandAction::Quit) => {
-                    tx.send("QUIT :Leaving IRC".to_string())
-                        .map_err(|_| io::Error::other("Writer stopped"))?;
-                    break;
-                }
-
-                Err(error) => {
-                    println!("Error: {error}");
-                }
-            }
-        }
-
-        Ok(())
-    });
-
-    // Keep main thread alive whilst workers run
-    reader_handle
+    // Reader exits and releases its writer sender.
+    let reader_result = reader_handle
         .join()
-        .map_err(|_| io::Error::other("Reader thread panicked"))??;
+        .map_err(|_| io::Error::other("Reader thread panicked"))?;
 
-    // Server has disconnected, Shut down workers
-    drop(input_handle);
-    writer_handle
+    // Writer drains its remaining commands and exits.
+    let writer_result = writer_handle
         .join()
-        .map_err(|_| io::Error::other("Writer thread panicked"))??;
+        .map_err(|_| io::Error::other("Writer thread panicked"))?;
+
+    let _ = shutdown_stream.shutdown(std::net::Shutdown::Write);
+
+    result?;
+    reader_result?;
+    let _ = writer_result;
 
     Ok(())
 }
