@@ -72,6 +72,10 @@ fn main() -> io::Result<()> {
                     println!("user <{nickname}> has joined channel {channel}")
                 }
 
+                Some(Event::Notice { target, text }) => {
+                    println!("{target} NOTICE: {text}")
+                }
+
                 Some(Event::ServerError(message)) => eprintln!("ERROR: {message}"),
 
                 Some(_) => {}
